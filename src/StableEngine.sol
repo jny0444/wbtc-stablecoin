@@ -13,6 +13,7 @@ contract StableEngine {
 
     uint256 constant PRECISION = 1e18;
     uint256 constant ADDITIONAL_FEED_PRECISION = 1e10;
+    uint256 constant COLLATERAL_FACTOR = 175; // 75% more than the value added as collateral
 
     constructor(address _wBTC, address _stableCoin, address _wBTCPriceFeed) {
         wBTC = IERC20(_wBTC);
@@ -23,13 +24,19 @@ contract StableEngine {
     function depositCollateral(uint256 amountwBTC) external {
         require(amountwBTC > 0, "Amount must be greater than zero");
 
-        // must call approve on wBTC before calling this function
+        // must call APPROVE on wBTC before calling this function
         require(wBTC.transferFrom(msg.sender, address(this), amountwBTC), "Transfer failed");
         uint256 wBTCPrice = _getUSDValue(amountwBTC);
         require(wBTCPrice > 0, "Invalid wBTC price");
+
+        uint256 stcAmoun = (wBTCPrice);
     }
 
+    function getSTC() external {}
+
     function withdrawCollateral() external {}
+
+    function burnSTC() external {}
 
     function liquidate() external {}
 
