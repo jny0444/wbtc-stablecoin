@@ -13,7 +13,10 @@ contract StableEngine {
 
     uint256 constant PRECISION = 1e18;
     uint256 constant ADDITIONAL_FEED_PRECISION = 1e10;
-    uint256 constant COLLATERAL_FACTOR = 175; // 75% more than the value added as collateral
+    uint256 constant COLLATERAL_FACTOR = 75;
+
+    mapping(address user => uint256 collateralAmount) public collateralAmounts;
+    mapping(address user => uint256 stableCoinAmount) public mintedStablecoin;
 
     constructor(address _wBTC, address _stableCoin, address _wBTCPriceFeed) {
         wBTC = IERC20(_wBTC);
@@ -26,21 +29,36 @@ contract StableEngine {
 
         // must call APPROVE on wBTC before calling this function
         require(wBTC.transferFrom(msg.sender, address(this), amountwBTC), "Transfer failed");
-        uint256 wBTCPrice = _getUSDValue(amountwBTC);
-        require(wBTCPrice > 0, "Invalid wBTC price");
+        collateralAmounts[msg.sender] += amountwBTC;
 
-        uint256 stcAmoun = (wBTCPrice);
+        uint256 usdValue = _getUSDValue(amountwBTC);
+        require(usdValue > 0, "Invalid wBTC price");
+
+        _mintSTC(usdValue);
     }
-
-    function getSTC() external {}
 
     function withdrawCollateral() external {}
 
-    function burnSTC() external {}
-
     function liquidate() external {}
 
-    function _checkHealthFactor() internal view returns (uint256 healthFactor) {}
+    function _mintSTC(uint256 usdValue) internal {
+        uint256 mintSTCAmount = (usdValue * COLLATERAL_FACTOR) / 100;
+        require(mintSTCAmount > 0, "Mint amount must be greater than zero");
+
+        stableCoin.mint(msg.sender, mintSTCAmount);
+        mintedStablecoin[msg.sender] += mintSTCAmount;
+    }
+
+    function _burnSTC(uint256 usdValue) internal {
+        uint256 mintSTCAmount = (usdValue * COLLATERAL_FACTOR) / 100;
+        require(mintSTCAmount > 0, "Burn amount must be greater than zero");
+
+        stableCoin.burnFrom(msg.sender, mintSTCAmount);
+    }
+
+    function _checkHealthFactor() internal view returns (uint256 healthFactor) {
+        
+    }
 
     function _getwBTCPrice() internal view returns (uint256 price) {
         AggregatorV3Interface priceFeed = AggregatorV3Interface(wBTCPriceFeed);
