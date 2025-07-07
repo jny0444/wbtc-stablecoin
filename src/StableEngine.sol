@@ -37,9 +37,35 @@ contract StableEngine {
         _mintSTC(usdValue);
     }
 
-    function withdrawCollateral() external {}
+    function withdrawCollateral(uint256 amountwBTC) external {
+        require(amountwBTC > 0, "Amount must be greater than zero");
+        require(collateralAmounts[msg.sender] >= amountwBTC, "Insufficient collateral");
 
-    function liquidate() external {}
+        collateralAmounts[msg.sender] -= amountwBTC;
+        require(_checkHealthFactor() >= 1e18, "Health factor must be at least 1");
+
+        require(wBTC.transfer(msg.sender, amountwBTC), "Transfer failed");
+        uint256 usdValue = _getUSDValue(amountwBTC);
+        require(usdValue > 0, "Invalid wBTC price");
+
+        _burnSTC(usdValue);
+    }
+
+    function liquidate(address liquidatee) external {
+        require(_checkHealthFactorForUser(liquidatee) < 1e18, "Health factor must be less than 1");
+
+        uint256 collateralValue = _getUSDValue(collateralAmounts[liquidatee]);
+        require(collateralValue > 0, "No collateral to liquidate");
+
+        uint256 stableCoinValue = mintedStablecoin[liquidatee] * PRECISION;
+        require(stableCoinValue > 0, "No stablecoin to liquidate");
+
+        require(wBTC.transfer(msg.sender, collateralAmounts[liquidatee]), "Transfer failed");
+        collateralAmounts[liquidatee] = 0;
+
+        stableCoin.burnFrom(liquidatee, mintedStablecoin[liquidatee]);
+        mintedStablecoin[liquidatee] = 0;
+    }
 
     function _mintSTC(uint256 usdValue) internal {
         uint256 mintSTCAmount = (usdValue * COLLATERAL_FACTOR) / 100;
@@ -52,12 +78,26 @@ contract StableEngine {
     function _burnSTC(uint256 usdValue) internal {
         uint256 mintSTCAmount = (usdValue * COLLATERAL_FACTOR) / 100;
         require(mintSTCAmount > 0, "Burn amount must be greater than zero");
+        require(mintedStablecoin[msg.sender] >= mintSTCAmount, "Insufficient stablecoin balance");
 
         stableCoin.burnFrom(msg.sender, mintSTCAmount);
+        mintedStablecoin[msg.sender] -= mintSTCAmount;
     }
 
     function _checkHealthFactor() internal view returns (uint256 healthFactor) {
-        
+        return _checkHealthFactorForUser(msg.sender);
+    }
+
+    function _checkHealthFactorForUser(address user) internal view returns (uint256 healthFactor) {
+        uint256 collateralValue = _getUSDValue(collateralAmounts[user]);
+        uint256 stableCoinValue = mintedStablecoin[user] * PRECISION;
+
+        if (collateralValue == 0 || stableCoinValue == 0) {
+            return type(uint256).max;
+        }
+
+        healthFactor = (collateralValue * PRECISION) / stableCoinValue;
+        return healthFactor;
     }
 
     function _getwBTCPrice() internal view returns (uint256 price) {
