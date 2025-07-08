@@ -14,6 +14,7 @@ contract StableEngine {
     uint256 constant PRECISION = 1e18;
     uint256 constant ADDITIONAL_FEED_PRECISION = 1e10;
     uint256 constant COLLATERAL_FACTOR = 75;
+    uint256 constant LIQUIDATION_BONUS = 10; // 10% bonus for liquidators
 
     mapping(address user => uint256 collateralAmount) public collateralAmounts;
     mapping(address user => uint256 stableCoinAmount) public mintedStablecoin;
@@ -54,16 +55,23 @@ contract StableEngine {
     function liquidate(address liquidatee) external {
         require(_checkHealthFactorForUser(liquidatee) < 1e18, "Health factor must be less than 1");
 
-        uint256 collateralValue = _getUSDValue(collateralAmounts[liquidatee]);
-        require(collateralValue > 0, "No collateral to liquidate");
+        uint256 collateralAmount = collateralAmounts[liquidatee];
+        require(collateralAmount > 0, "No collateral to liquidate");
 
-        uint256 stableCoinValue = mintedStablecoin[liquidatee] * PRECISION;
-        require(stableCoinValue > 0, "No stablecoin to liquidate");
+        uint256 stableCoinDebt = mintedStablecoin[liquidatee];
+        require(stableCoinDebt > 0, "No stablecoin debt to liquidate");
 
-        require(wBTC.transfer(msg.sender, collateralAmounts[liquidatee]), "Transfer failed");
+        uint256 liquidationBonus = (collateralAmount * LIQUIDATION_BONUS) / 100;
+        uint256 totalLiquidationReward = collateralAmount + liquidationBonus;
+
+        if (totalLiquidationReward > collateralAmount) {
+            totalLiquidationReward = collateralAmount;
+        }
+
+        require(wBTC.transfer(msg.sender, totalLiquidationReward), "Transfer failed");
         collateralAmounts[liquidatee] = 0;
 
-        stableCoin.burnFrom(liquidatee, mintedStablecoin[liquidatee]);
+        stableCoin.burnFrom(liquidatee, stableCoinDebt);
         mintedStablecoin[liquidatee] = 0;
     }
 
