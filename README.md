@@ -227,32 +227,8 @@ Total Reward = Collateral + (Collateral × 10%)
 - ✅ Price feed validation
 - ✅ Comprehensive event logging
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- [Chainlink](https://chain.link/) for price feed infrastructure
-- [OpenZeppelin](https://openzeppelin.com/) for security libraries
-- [Foundry](https://book.getfoundry.sh/) for development framework
-
-## 📞 Support
-
-For questions and support:
-
-- Create an issue in this repository
-- Join our [Discord](https://discord.gg/your-discord)
-- Follow us on [Twitter](https://twitter.com/your-twitter)
-
----
 
 **⚠️ DISCLAIMER**: This project is for educational purposes. Do not use in production without proper auditing and testing.
