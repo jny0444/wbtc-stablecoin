@@ -4,8 +4,11 @@ pragma solidity ^0.8.20;
 import "./StableCoin.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract StableEngine {
+contract StableEngine is ReentrancyGuard, Pausable, Ownable {
     address public wBTCPriceFeed;
 
     IERC20 public wBTC;
@@ -14,18 +17,24 @@ contract StableEngine {
     uint256 constant PRECISION = 1e18;
     uint256 constant ADDITIONAL_FEED_PRECISION = 1e10;
     uint256 constant COLLATERAL_FACTOR = 75;
-    uint256 constant LIQUIDATION_BONUS = 10; // 10% bonus for liquidators
+    uint256 constant LIQUIDATION_BONUS = 10;
+    uint256 constant PRICE_STALENESS_THRESHOLD = 3600; // 1 hour
+
+    // Events
+    event CollateralDeposited(address indexed user, uint256 amount, uint256 stableCoinMinted);
+    event CollateralWithdrawn(address indexed user, uint256 amount, uint256 stableCoinBurned);
+    event Liquidated(address indexed liquidatee, address indexed liquidator, uint256 collateralAmount, uint256 bonus);
 
     mapping(address user => uint256 collateralAmount) public collateralAmounts;
     mapping(address user => uint256 stableCoinAmount) public mintedStablecoin;
 
-    constructor(address _wBTC, address _stableCoin, address _wBTCPriceFeed) {
+    constructor(address _wBTC, address _stableCoin, address _wBTCPriceFeed) Ownable(msg.sender) {
         wBTC = IERC20(_wBTC);
         stableCoin = StableCoin(_stableCoin);
         wBTCPriceFeed = _wBTCPriceFeed;
     }
 
-    function depositCollateral(uint256 amountwBTC) external {
+    function depositCollateral(uint256 amountwBTC) external nonReentrant whenNotPaused {
         require(amountwBTC > 0, "Amount must be greater than zero");
 
         // must call APPROVE on wBTC before calling this function
@@ -36,9 +45,12 @@ contract StableEngine {
         require(usdValue > 0, "Invalid wBTC price");
 
         _mintSTC(usdValue);
+        uint256 mintedAmount = (usdValue * COLLATERAL_FACTOR) / 100;
+
+        emit CollateralDeposited(msg.sender, amountwBTC, mintedAmount);
     }
 
-    function withdrawCollateral(uint256 amountwBTC) external {
+    function withdrawCollateral(uint256 amountwBTC) external nonReentrant whenNotPaused {
         require(amountwBTC > 0, "Amount must be greater than zero");
         require(collateralAmounts[msg.sender] >= amountwBTC, "Insufficient collateral");
 
@@ -50,9 +62,12 @@ contract StableEngine {
         require(usdValue > 0, "Invalid wBTC price");
 
         _burnSTC(usdValue);
+        uint256 burnedAmount = (usdValue * COLLATERAL_FACTOR) / 100;
+
+        emit CollateralWithdrawn(msg.sender, amountwBTC, burnedAmount);
     }
 
-    function liquidate(address liquidatee) external {
+    function liquidate(address liquidatee) external nonReentrant {
         require(_checkHealthFactorForUser(liquidatee) < 1e18, "Health factor must be less than 1");
 
         uint256 collateralAmount = collateralAmounts[liquidatee];
@@ -73,6 +88,8 @@ contract StableEngine {
 
         stableCoin.burnFrom(liquidatee, stableCoinDebt);
         mintedStablecoin[liquidatee] = 0;
+
+        emit Liquidated(liquidatee, msg.sender, collateralAmount, liquidationBonus);
     }
 
     function _mintSTC(uint256 usdValue) internal {
@@ -110,8 +127,13 @@ contract StableEngine {
 
     function _getwBTCPrice() internal view returns (uint256 price) {
         AggregatorV3Interface priceFeed = AggregatorV3Interface(wBTCPriceFeed);
-        (, int256 priceInt,,,) = priceFeed.latestRoundData();
+        (uint80 roundId, int256 priceInt,, uint256 updatedAt, uint80 answeredInRound) = priceFeed.latestRoundData();
+
         require(priceInt > 0, "Invalid price");
+        require(updatedAt > 0, "Round not complete");
+        require(block.timestamp - updatedAt <= PRICE_STALENESS_THRESHOLD, "Price data is stale");
+        require(answeredInRound >= roundId, "Stale price");
+
         return uint256(priceInt);
     }
 
@@ -122,5 +144,39 @@ contract StableEngine {
     function _getwBTCDecimals() internal view returns (uint8 decimals) {
         AggregatorV3Interface priceFeed = AggregatorV3Interface(wBTCPriceFeed);
         return priceFeed.decimals();
+    }
+
+    function getUserHealthFactor(address user) external view returns (uint256) {
+        return _checkHealthFactorForUser(user);
+    }
+
+    function getCollateralValueInUSD(address user) external view returns (uint256) {
+        return _getUSDValue(collateralAmounts[user]);
+    }
+
+    function getCurrentwBTCPrice() external view returns (uint256) {
+        return _getwBTCPrice();
+    }
+
+    function getAccountInformation(address user)
+        external
+        view
+        returns (uint256 totalStableCoinMinted, uint256 collateralValueInUsd)
+    {
+        totalStableCoinMinted = mintedStablecoin[user];
+        collateralValueInUsd = _getUSDValue(collateralAmounts[user]);
+    }
+
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+
+    function emergencyWithdraw(address token, uint256 amount) external onlyOwner whenPaused {
+        require(token != address(0), "Invalid token address");
+        IERC20(token).transfer(owner(), amount);
     }
 }
