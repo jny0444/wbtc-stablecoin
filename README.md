@@ -227,8 +227,4 @@ Total Reward = Collateral + (Collateral × 10%)
 - ✅ Price feed validation
 - ✅ Comprehensive event logging
 
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
 **⚠️ DISCLAIMER**: This project is for educational purposes. Do not use in production without proper auditing and testing.
